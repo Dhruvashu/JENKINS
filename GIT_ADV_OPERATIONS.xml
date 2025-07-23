@@ -1,0 +1,106 @@
+<?xml version='1.1' encoding='UTF-8'?>
+<flow-definition plugin="workflow-job@1540.v295eccc9778f">
+  <actions>
+    <org.jenkinsci.plugins.pipeline.modeldefinition.actions.DeclarativeJobAction plugin="pipeline-model-definition@2.2255.v56a_15e805f12"/>
+    <org.jenkinsci.plugins.pipeline.modeldefinition.actions.DeclarativeJobPropertyTrackerAction plugin="pipeline-model-definition@2.2255.v56a_15e805f12">
+      <jobProperties/>
+      <triggers/>
+      <parameters/>
+      <options/>
+    </org.jenkinsci.plugins.pipeline.modeldefinition.actions.DeclarativeJobPropertyTrackerAction>
+  </actions>
+  <description>Handling both git lone and git pull and Handling Merge Conflicts</description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <com.dabsquared.gitlabjenkins.connection.GitLabConnectionProperty plugin="gitlab-plugin@1.9.8">
+      <gitLabConnection></gitLabConnection>
+      <jobCredentialId></jobCredentialId>
+      <useAlternativeCredential>false</useAlternativeCredential>
+    </com.dabsquared.gitlabjenkins.connection.GitLabConnectionProperty>
+  </properties>
+  <definition class="org.jenkinsci.plugins.workflow.cps.CpsFlowDefinition" plugin="workflow-cps@4168.v7ea_f89c358b_d">
+    <script>pipeline {
+    agent any
+
+    environment {
+        REPO_URL = &apos;https://github.com/Dhruvashu/My_First_Repository.git&apos;
+        FILE_NAME = &apos;jenkins1.txt&apos;
+        COMMIT_MSG = &apos;Update from Jenkins Pipeline&apos;
+        BRANCH = &apos;main&apos;
+        REPO_DIR = &quot;${env.WORKSPACE}/repo&quot;
+    }
+
+    stages {
+        stage(&apos;Prepare Repo&apos;) {
+            steps {
+                withCredentials([usernamePassword(credentialsId: &apos;github-creds&apos;, usernameVariable: &apos;GIT_USER&apos;, passwordVariable: &apos;GIT_TOKEN&apos;)]) {
+                    script {
+                        dir(&quot;${REPO_DIR}&quot;) {
+                            if (!fileExists(&quot;${REPO_DIR}/.git&quot;)) {
+                                echo &quot;Cloning repository...&quot;
+                                sh &quot;git clone https://${GIT_USER}:${GIT_TOKEN}@github.com/Dhruvashu/My_First_Repository.git .&quot;
+                            } else {
+                                echo &quot;Repository already exists. Pulling latest changes...&quot;
+                                sh &quot;git pull https://${GIT_USER}:${GIT_TOKEN}@github.com/Dhruvashu/My_First_Repository.git ${BRANCH}&quot;
+                            }
+
+                            sh &quot;git checkout ${BRANCH}&quot;
+                        }
+                    }
+                }
+            }
+        }
+
+        stage(&apos;Check Merge Conflict&apos;) {
+            steps {
+                dir(&quot;${REPO_DIR}&quot;) {
+                    script {
+                        def conflict = sh(script: &quot;git ls-files -u | wc -l&quot;, returnStdout: true).trim()
+                        if (conflict != &apos;0&apos;) {
+                            error(&quot;Merge conflict detected. Manual resolution needed.&quot;)
+                        }
+                    }
+                }
+            }
+        }
+
+        stage(&apos;Update File&apos;) {
+            steps {
+                dir(&quot;${REPO_DIR}&quot;) {
+                    sh &apos;&apos;&apos;
+                        echo &quot;Second Update from Jenkins at $(date)&quot; &gt;&gt; ${FILE_NAME}
+                    &apos;&apos;&apos;
+                }
+            }
+        }
+
+        stage(&apos;Check Status&apos;) {
+            steps {
+                dir(&quot;${REPO_DIR}&quot;) {
+                    sh &apos;git status&apos;
+                }
+            }
+        }
+
+        stage(&apos;Commit &amp; Push&apos;) {
+            steps {
+                withCredentials([usernamePassword(credentialsId: &apos;github-creds&apos;, usernameVariable: &apos;GIT_USER&apos;, passwordVariable: &apos;GIT_TOKEN&apos;)]) {
+                    sh &apos;&apos;&apos;
+                        cd ${REPO_DIR}
+                        git config user.email &quot;208357381+Dhruvashu@users.noreply.github.com&quot;
+                        git config user.name &quot;Dhruvashu&quot;
+                        git add ${FILE_NAME}
+                        git commit -m &quot;${COMMIT_MSG}&quot; || echo &quot;No changes to commit&quot;
+                        git push https://${GIT_USER}:${GIT_TOKEN}@github.com/Dhruvashu/My_First_Repository.git ${BRANCH}
+                    &apos;&apos;&apos;
+                }
+            }
+        }
+    }
+}
+</script>
+    <sandbox>true</sandbox>
+  </definition>
+  <triggers/>
+  <disabled>false</disabled>
+</flow-definition>
