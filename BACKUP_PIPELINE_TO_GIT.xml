@@ -1,0 +1,127 @@
+<?xml version='1.1' encoding='UTF-8'?>
+<flow-definition plugin="workflow-job@1540.v295eccc9778f">
+  <actions>
+    <org.jenkinsci.plugins.pipeline.modeldefinition.actions.DeclarativeJobAction plugin="pipeline-model-definition@2.2255.v56a_15e805f12"/>
+    <org.jenkinsci.plugins.pipeline.modeldefinition.actions.DeclarativeJobPropertyTrackerAction plugin="pipeline-model-definition@2.2255.v56a_15e805f12">
+      <jobProperties/>
+      <triggers/>
+      <parameters>
+        <string>PIPELINE_NAME</string>
+      </parameters>
+      <options/>
+    </org.jenkinsci.plugins.pipeline.modeldefinition.actions.DeclarativeJobPropertyTrackerAction>
+  </actions>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <com.dabsquared.gitlabjenkins.connection.GitLabConnectionProperty plugin="gitlab-plugin@1.9.8">
+      <gitLabConnection></gitLabConnection>
+      <jobCredentialId></jobCredentialId>
+      <useAlternativeCredential>false</useAlternativeCredential>
+    </com.dabsquared.gitlabjenkins.connection.GitLabConnectionProperty>
+    <hudson.model.ParametersDefinitionProperty>
+      <parameterDefinitions>
+        <hudson.model.StringParameterDefinition>
+          <name>PIPELINE_NAME</name>
+          <description>Enter Jenkins job name to back up</description>
+          <trim>false</trim>
+        </hudson.model.StringParameterDefinition>
+      </parameterDefinitions>
+    </hudson.model.ParametersDefinitionProperty>
+  </properties>
+  <definition class="org.jenkinsci.plugins.workflow.cps.CpsFlowDefinition" plugin="workflow-cps@4168.v7ea_f89c358b_d">
+    <script>pipeline {
+    agent any
+
+    parameters {
+        string(name: &apos;PIPELINE_NAME&apos;,
+        defaultValue: &apos;&apos;,
+        description: &apos;Enter Jenkins job name to back up&apos;)
+    }
+
+    environment {
+        BACKUP_FOLDER = &apos;pipeline-backup&apos;
+        COMMIT_MSG = &apos;Backup of pipeline&apos;
+        BRANCH = &apos;main&apos;
+    }
+
+    stages {
+        stage(&apos;Validate Input&apos;) {
+            steps {
+                script {
+                    if (!params.PIPELINE_NAME?.trim()) {
+                        error &quot;PIPELINE_NAME is required.&quot;
+                    }
+                }
+            }
+        }
+
+        stage(&apos;Cleanup Workspace&apos;) {
+            steps {
+                deleteDir()
+                sh &quot;mkdir -p ${env.BACKUP_FOLDER}&quot;
+            }
+        }
+
+        stage(&apos;Clone Repo&apos;) {
+            steps {
+                withCredentials([usernamePassword(
+                    credentialsId: &apos;github-creds&apos;,
+                    usernameVariable: &apos;GIT_USER&apos;,
+                    passwordVariable: &apos;GIT_TOKEN&apos;
+                )]) {
+                    dir(&quot;${env.BACKUP_FOLDER}&quot;) {
+                        sh &apos;&apos;&apos;
+                            git clone https://${GIT_USER}:${GIT_TOKEN}@github.com/Dhruvashu/JENKINS.git .
+                            git checkout ${BRANCH}
+                        &apos;&apos;&apos;
+                    }
+                }
+            }
+        }
+
+        stage(&apos;Export Job Config&apos;) {
+            steps {
+                script {
+                    def jobXml = getJobConfigXml(params.PIPELINE_NAME.trim())
+                    writeFile file: &quot;${env.BACKUP_FOLDER}/${params.PIPELINE_NAME.trim()}.xml&quot;, text: jobXml
+                }
+            }
+        }
+
+        stage(&apos;Commit &amp; Push&apos;) {
+            steps {
+                withCredentials([usernamePassword(
+                    credentialsId: &apos;github-creds&apos;,
+                    usernameVariable: &apos;GIT_USER&apos;,
+                    passwordVariable: &apos;GIT_TOKEN&apos;
+                )]) {
+                    dir(&quot;${env.BACKUP_FOLDER}&quot;) {
+                        sh &apos;&apos;&apos;
+                            git config user.email &quot;208357381+Dhruvashu@users.noreply.github.com&quot;
+                            git config user.name &quot;Dhruvashu&quot;
+                            git add .
+                            git commit -m &quot;${COMMIT_MSG}: ${PIPELINE_NAME} on $(date)&quot;
+                            git push origin ${BRANCH}
+                        &apos;&apos;&apos;
+                    }
+                }
+            }
+        }
+    }
+}
+
+@NonCPS
+def getJobConfigXml(String jobName) {
+    def job = Jenkins.instance.getItemByFullName(jobName)
+    if (!job) {
+        error &quot;Job &apos;${jobName}&apos; not found!&quot;
+    }
+    return job.getConfigFile().asString()
+}
+</script>
+    <sandbox>true</sandbox>
+  </definition>
+  <triggers/>
+  <disabled>false</disabled>
+</flow-definition>
